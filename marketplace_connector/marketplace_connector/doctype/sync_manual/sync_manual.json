@@ -6,6 +6,7 @@
  "engine": "InnoDB",
  "field_order": [
   "tanggal_sync",
+  "store_name",
   "marketplace",
   "sync_manual"
  ],
@@ -30,11 +31,18 @@
    "fieldtype": "Button",
    "label": "Sync Manual",
    "options": "sync_manual"
+  },
+  {
+   "fieldname": "store_name",
+   "fieldtype": "Link",
+   "label": "Store Name",
+   "options": "Shopee Shop Setting",
+   "reqd": 1
   }
  ],
  "hide_toolbar": 1,
  "issingle": 1,
- "modified": "2021-04-26 16:30:39.903141",
+ "modified": "2021-05-24 11:35:11.396237",
  "modified_by": "Administrator",
  "module": "Marketplace Connector",
  "name": "Sync Manual",

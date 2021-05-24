@@ -21,9 +21,14 @@ class SyncManual(Document):
 		if not self.marketplace :
 			frappe.throw("Marketplace belum dipilih")
 
-		sitename = str(frappe.utils.get_url()).replace("https://", "").replace("http://").replace("/","")
+		if not self.store_name :
+			frappe.throw("Store Name belum dipilih")
 
-		os.chdir("/home/frappe/frappe-bench")
-		os.system(""" bench --site {} execute marketplace_connector.marketplace_connector.doctype.sync_method.enqueue_marketplace_orders --kwargs '{{"date":"{}"}}' """.format(sitename, self.tanggal_sync))
+		sitename = str(frappe.utils.get_url()).replace("https://", "").replace("http://", "").replace("/","")
+
+		# frappe.throw(sitename)
+
+		os.chdir("/home/frappe/ahok-bench")
+		os.system(""" bench --site {} execute marketplace_connector.marketplace_connector.doctype.sync_method.enqueue_marketplace_orders --kwargs '{{"date":"{}", "shop_setting":"{}"}}' """.format(sitename, self.tanggal_sync, self.store_name))
 
 		

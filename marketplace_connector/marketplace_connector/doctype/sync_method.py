@@ -7,7 +7,7 @@ import frappe
 from frappe.model.document import Document
 
 from marketplace_connector.marketplace_connector.doctype.frappeclient import FrappeClient
-from marketplace_connector.marketplace_connector.doctype.shopee_setting.shopee_connector.client import Client
+from marketplace_connector.marketplace_connector.doctype.shopee_shop_setting.shopee_connector.client import Client
 
 # from woocommerce_setting.woocommerce import API
 
@@ -91,12 +91,41 @@ def generate_url_untuk_order_id():
 
 @frappe.whitelist()
 def hourly_get_marketplace_orders():
-	today_date = utils.today()
-	enqueue("marketplace_connector.marketplace_connector.doctype.sync_method.enqueue_marketplace_orders", date=today_date)
+
+	# ambil semua store yang enable
+	get_store = frappe.db.sql("""
+		SELECT sss.`name` FROM `tabShopee Shop Setting` sss
+		WHERE sss.`enable_sync` = 1
+	""")
+
+	if get_store :
+		for gs in get_store :
+			shopee_setting = frappe.get_doc("Shopee Shop Setting", gs[0])
+			if shopee_setting.sync_berapa_hari == "1 hari" :
+				today_date = utils.today()
+				enqueue("marketplace_connector.marketplace_connector.doctype.sync_method.enqueue_marketplace_orders", date=today_date, shop_setting = gs[0])
+
+			elif shopee_setting.sync_berapa_hari == "2 hari" :
+				today_date = utils.today()
+				enqueue("marketplace_connector.marketplace_connector.doctype.sync_method.enqueue_marketplace_orders", date=today_date, shop_setting = gs[0])
+
+				before_date = str(add_days(utils.today(), -1))
+				enqueue("marketplace_connector.marketplace_connector.doctype.sync_method.enqueue_marketplace_orders", date=before_date, shop_setting = gs[0])
+
+			elif shopee_setting.sync_berapa_hari == "3 hari" :
+				today_date = utils.today()
+				enqueue("marketplace_connector.marketplace_connector.doctype.sync_method.enqueue_marketplace_orders", date=today_date, shop_setting = gs[0])
+
+				before_date = str(add_days(utils.today(), -1))
+				enqueue("marketplace_connector.marketplace_connector.doctype.sync_method.enqueue_marketplace_orders", date=before_date, shop_setting = gs[0])
+
+				before_before_date = str(add_days(utils.today(), -2))
+				enqueue("marketplace_connector.marketplace_connector.doctype.sync_method.enqueue_marketplace_orders", date=before_before_date, shop_setting = gs[0])
+
 
 
 @frappe.whitelist()
-def enqueue_marketplace_orders(date=None):
+def enqueue_marketplace_orders(date=None, shop_setting=None):
 	count = 0
 	time_from = 0
 	time_to = 0
@@ -112,7 +141,7 @@ def enqueue_marketplace_orders(date=None):
 	time_to = int(time.mktime(datetime.datetime.strptime(str(today_evening), "%Y-%m-%d %H:%M:%S").timetuple()))
 
 	# check setting
-	shopee_setting = frappe.get_single("Shopee Setting")
+	shopee_setting = frappe.get_doc("Shopee Shop Setting", shop_setting)
 
 	if shopee_setting.enable_sync :
 
@@ -154,6 +183,16 @@ def enqueue_marketplace_orders(date=None):
 								get_docu = frappe.get_doc("Marketplace Orders", i["ordersn"])
 								get_docu.order_status = i["order_status"]
 
+								get_docu.shop_name = shopee_setting.shop_name
+								get_docu.shop_setting = shopee_setting.name
+
+								child_result = shopeeclient.order.get_order_detail(ordersn_list = [i["ordersn"]])
+								if child_result["orders"] :
+									for a in child_result["orders"] :
+										get_docu.shipping_carrier = a["shipping_carrier"]
+										get_docu.tracking_no = a["tracking_no"]
+										get_docu.days_to_ship = a["days_to_ship"]
+
 								get_docu.flags.ignore_permission = True
 								get_docu.save()
 
@@ -164,6 +203,9 @@ def enqueue_marketplace_orders(date=None):
 							new_docu.marketplace = "Shopee"
 							new_docu.order_id = i["ordersn"]
 							new_docu.order_status = i["order_status"]
+
+							new_docu.shop_name = shopee_setting.shop_name
+							new_docu.shop_setting = shopee_setting.name
 
 							new_docu.posting_date = curr_date
 
@@ -253,7 +295,7 @@ def enqueue_marketplace_orders(date=None):
 def create_sinv_marketplace_orders(doc, method):
 	
 	count = 0
-	shopee_setting = frappe.get_single("Shopee Setting")
+	shopee_setting = frappe.get_doc("Shopee Shop Setting", doc.shop_setting)
 
 	shopid = int(shopee_setting.shop_id)
 	partnerid = int(shopee_setting.partner_id)
@@ -271,140 +313,6 @@ def create_sinv_marketplace_orders(doc, method):
 			doc.sinv_no = cari_data_invoice
 
 		else :
-
-			# # cek customer
-			# cari_data_customer = frappe.get_value("Customer", str(doc.customer_name).strip()+" - ("+str(doc.customer).strip()+")", "name")
-			# if cari_data_customer :
-			# 	# customer sudah terdaftar
-			# 	count = 0
-			# else :
-
-			# 	# create new customer
-			# 	new_cust = frappe.new_doc("Customer")
-			# 	new_cust.customer_group = str(shopee_setting.customer_group)
-			# 	new_cust.customer_name = str(doc.customer_name).strip()+" - ("+str(doc.customer).strip()+")"
-
-			# 	new_cust.territory = "All Territories"
-			# 	new_cust.customer_type = "Individual"
-			# 	new_cust.flags.ignore_permission = True
-			# 	new_cust.save()
-
-			# 	# create new address
-			# 	new_add = frappe.new_doc("Address")
-			# 	new_add.address_title = str(doc.customer_name).strip()+" - ("+str(doc.customer).strip()+")"
-			# 	new_add.address_type = "Personal"
-			# 	new_add.address_line1 = doc.recipient_address
-			# 	new_add.city = doc.recipient_city
-			# 	new_add.country = "Indonesia"
-			# 	new_add.is_primary_address = 1
-			# 	new_add.phone = doc.recipient_phone
-			# 	new_add.links = []
-			# 	add_child = new_add.append('links', {})
-			# 	add_child.link_doctype = "Customer"
-			# 	add_child.link_name = str(doc.customer_name).strip()+" - ("+str(doc.customer).strip()+")"
-			# 	new_add.flags.ignore_permission = True
-			# 	new_add.save()
-
-			# # create sales invoice
-			# customer_name = str(doc.customer_name).strip()+" - ("+str(doc.customer).strip()+")"
-
-			# new_sales_order = frappe.new_doc("Sales Invoice")
-
-			# new_sales_order.customer = customer_name
-			# new_sales_order.customer_group = str(shopee_setting.customer_group)
-			# new_sales_order.update_stock = 1
-			# new_sales_order.set_posting_time = 1
-
-			# new_sales_order.ignore_pricing_rule = 1
-
-			# new_sales_order.posting_date = doc.posting_date
-			# new_sales_order.naming_series = "SINV-"
-			# new_sales_order.marketplace = "Shopee"
-			# new_sales_order.marketplace_id = doc.order_id
-			# new_sales_order.nomor_resi = doc.tracking_no
-
-			# # new_sales_order.delivery_date = order_delivery_date
-			# default_set_company = frappe.get_doc("Global Defaults")
-			# company = default_set_company.default_company
-			# found_company = frappe.get_doc("Company",{"name":company})
-			# company_abbr = found_company.abbr
-
-			# new_sales_order.company = company
-
-			# for item in doc.items:
-
-			# 	# cari data item
-			# 	cari_data_item = frappe.get_value("Item", {"name" : item.item_sku}, "name")
-			# 	if not cari_data_item :
-			# 		new_item = frappe.new_doc("Item")
-			# 		new_item.item_code = item.item_sku
-			# 		new_item.item_name = item.item_name
-			# 		new_item.description = item.item_name
-
-			# 		get_stock_setting = frappe.get_single("Stock Settings")
-			# 		new_item.stock_uom = get_stock_setting.stock_uom
-			# 		new_item.item_group = "Shopee"
-			# 		new_item.flags.ignore_permissions = True
-			# 		new_item.save()
-
-			# 	new_sales_order.append("items",{
-			# 		"item_code": str(item.item_sku),
-			# 		"item_name": str(item.item_name),
-			# 		"qty": float(item.qty),
-			# 		"rate": float(item.rate),
-			# 		"price_list_rate": float(item.price_list_rate),
-			# 		"warehouse": shopee_setting.warehouse
-			# 	})
-
-			# ## get data escrow
-			# # print(i.order_id)
-			# result_escrow = shopeeclient.order.get_order_escrow_detail(ordersn = doc.order_id)
-			# if result_escrow :
-			# 	actual_shipping_fee = 0
-			# 	shipping_fee_rebate = 0
-			# 	voucher_seller = 0
-
-			# 	ship_fee = 0
-
-			# 	new_array_escrow = result_escrow["order"]["income_details"]
-
-			# 	if float(new_array_escrow["actual_shipping_cost"]) != 0 :
-			# 		actual_shipping_fee = float(new_array_escrow["actual_shipping_cost"]) * -1
-			# 		shipping_fee_rebate = float(new_array_escrow["shipping_fee_rebate"])
-
-			# 		ship_fee = actual_shipping_fee - shipping_fee_rebate
-
-			# 	voucher_seller = float(new_array_escrow["voucher_seller"])
-
-			# 	doc.estimated_shipping_fee = ship_fee
-			# 	doc.voucher_applied = voucher_seller
-
-			# 	# penambahan additional discount
-			# 	if doc.additional_discount :
-			# 		voucher_seller = voucher_seller + float(doc.additional_discount)
-
-			# 	# ongkir
-			# 	if doc.estimated_shipping_fee > 0 :
-			# 		new_sales_order.append("taxes",{
-			# 			"charge_type": "Actual",
-			# 			"account_head": shopee_setting.shipping_account,
-			# 			"description" : "Ongkos Kirim",
-			# 			"tax_amount" : float(doc.estimated_shipping_fee)
-
-			# 		})
-
-			# 	new_sales_order.apply_discount_on = "Grand Total"
-			# 	new_sales_order.discount_amount = float(voucher_seller)
-			# 	new_sales_order.base_discount_amount = float(voucher_seller)
-
-			# new_sales_order.flags.ignore_permission = True
-			# new_sales_order.save()
-
-			# # frappe.throw(str(new_sales_order))
-
-			# doc.sinv_no = new_sales_order.name
-			# doc.status_sync = "Berhasil"
-
 
 			try :
 				# cek customer
@@ -458,6 +366,7 @@ def create_sinv_marketplace_orders(doc, method):
 				new_sales_order.marketplace_id = doc.order_id
 				new_sales_order.nomor_resi = doc.tracking_no
 				new_sales_order.kurir = doc.shipping_carrier
+				new_sales_order.shop_name = doc.shop_name
 
 
 				# new_sales_order.delivery_date = order_delivery_date
@@ -473,16 +382,28 @@ def create_sinv_marketplace_orders(doc, method):
 					# cari data item
 					cari_data_item = frappe.get_value("Item", {"name" : item.item_sku}, "name")
 					if not cari_data_item :
-						new_item = frappe.new_doc("Item")
-						new_item.item_code = item.item_sku
-						new_item.item_name = item.item_name
-						new_item.description = item.item_name
 
-						get_stock_setting = frappe.get_single("Stock Settings")
-						new_item.stock_uom = get_stock_setting.stock_uom
-						new_item.item_group = "Shopee"
-						new_item.flags.ignore_permissions = True
-						new_item.save()
+						if shopee_setting.create_new_item == 1 :
+
+							new_item = frappe.new_doc("Item")
+							new_item.item_code = item.item_sku
+							new_item.item_name = item.item_name
+							new_item.description = item.item_name
+
+							get_stock_setting = frappe.get_single("Stock Settings")
+
+							if shopee_setting.default_uom :
+								new_item.stock_uom = shopee_setting.default_uom
+							else :
+								new_item.stock_uom = get_stock_setting.stock_uom
+
+							if shopee_setting.default_item_group :
+								new_item.item_group = shopee_setting.default_item_group
+							else :
+								new_item.item_group = get_stock_setting.item_group
+
+							new_item.flags.ignore_permissions = True
+							new_item.save()
 
 					new_sales_order.append("items",{
 						"item_code": str(item.item_sku),
@@ -546,11 +467,6 @@ def create_sinv_marketplace_orders(doc, method):
 
 								
 		
-
-
-
-
-
 
 
 

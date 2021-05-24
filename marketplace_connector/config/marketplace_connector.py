@@ -20,6 +20,12 @@ def get_data():
 				},
 				{
 					"type": "doctype",
+					"name": "Shopee Shop Setting",
+					"description":_("Shopee Setting"),
+					"onboard": 1,
+				},
+				{
+					"type": "doctype",
 					"name": "Sync Manual",
 					"description":_("Sync Manual"),
 					"onboard": 1,
